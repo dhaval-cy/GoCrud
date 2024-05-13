@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 var db *sql.DB
 
 func init() {
-	tmpDB, err := sql.Open("postgres", "dbname=books_database user=postgres password=System host=localhost sslmode=disable")
+	tmpDB, err := sql.Open("mysql", "root:root@tcp(0.0.0.0:3306)/books_database")
 	if err != nil {
 		log.Fatal(err)
 	}

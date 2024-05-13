@@ -1,10 +1,11 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/go-sql-driver/mysql"
 )
 
 func getBook(bookID int) (Book, error) {
@@ -15,9 +16,9 @@ func getBook(bookID int) (Book, error) {
 	var name string
 	var author string
 	var pages int
-	var publicationDate pq.NullTime
+	var publicationDate mysql.NullTime
 
-	err := db.QueryRow(`SELECT id, name, author, pages, publication_date FROM books where id = $1`, bookID).Scan(&id, &name, &author, &pages, &publicationDate)
+	err := db.QueryRow(`SELECT id, name, author, pages, publication_date FROM books where id = ?`, bookID).Scan(&id, &name, &author, &pages, &publicationDate)
 	if err == nil {
 		res = Book{ID: id, Name: name, Author: author, Pages: pages, PublicationDate: publicationDate.Time}
 	}
@@ -40,7 +41,7 @@ func allBooks() ([]Book, error) {
 		var name string
 		var author string
 		var pages int
-		var publicationDate pq.NullTime
+		var publicationDate mysql.NullTime
 
 		err = rows.Scan(&id, &name, &author, &pages, &publicationDate)
 		if err != nil {
@@ -58,22 +59,36 @@ func allBooks() ([]Book, error) {
 	return books, err
 }
 
-func insertBook(name, author string, pages int, publicationDate time.Time) (int, error) {
+func insertBook(name, author string, pages int, publicationDate time.Time) (int64, error) {
 	//Create
-	var bookID int
-	err := db.QueryRow(`INSERT INTO books(name, author, pages, publication_date) VALUES($1, $2, $3, $4) RETURNING id`, name, author, pages, publicationDate).Scan(&bookID)
+	var err error
 
+	var ins *sql.Stmt
+	// don't use _, err := db.Query()
+	// func (db *DB) Prepare(query string) (*Stmt, error)
+	ins, err = db.Prepare("INSERT INTO books(name, author, pages, publication_date) VALUES(?, ?, ?, ?)")
 	if err != nil {
-		return 0, err
+		panic(err)
 	}
+	defer ins.Close()
+	// func (s *Stmt) Exec(args ...interface{}) (Result, error)
+	res, err := ins.Exec(name, author, pages, publicationDate)
 
-	fmt.Printf("Last inserted ID: %v\n", bookID)
-	return bookID, err
+	rowsAffec, _ := res.RowsAffected()
+	if err != nil || rowsAffec != 1 {
+		fmt.Println("Error inserting row:", err)
+	}
+	lastInserted, _ := res.LastInsertId()
+	rowsAffected, _ := res.RowsAffected()
+	fmt.Println("ID of last row inserted:", lastInserted)
+	fmt.Println("number of rows affected:", rowsAffected)
+
+	return lastInserted, err
 }
 
 func updateBook(id int, name, author string, pages int, publicationDate time.Time) (int, error) {
 	//Create
-	res, err := db.Exec(`UPDATE books set name=$1, author=$2, pages=$3, publication_date=$4 where id=$5 RETURNING id`, name, author, pages, publicationDate, id)
+	res, err := db.Exec(`UPDATE books set name=?, author=?, pages=?, publication_date=? where id=?`, name, author, pages, publicationDate, id)
 	if err != nil {
 		return 0, err
 	}
@@ -88,7 +103,7 @@ func updateBook(id int, name, author string, pages int, publicationDate time.Tim
 
 func removeBook(bookID int) (int, error) {
 	//Delete
-	res, err := db.Exec(`delete from books where id = $1`, bookID)
+	res, err := db.Exec(`delete from books where id = ?`, bookID)
 	if err != nil {
 		return 0, err
 	}
